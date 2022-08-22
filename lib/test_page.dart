@@ -21,8 +21,8 @@ class TestPageState extends State<TestPage> {
 
   Future testHttp() async {
     try {
-      var response = await dio.get('https://www.google.com');
-      // var response = await Dio().get('https://sg.yahoo.com/?p=us');
+      // var response = await dio.get('https://www.google.com');
+      var response = await dio.get('https://sg.yahoo.com/?p=us');
       debugPrint(response.statusCode.toString());
     } catch (e) {
       debugPrint(e.toString());

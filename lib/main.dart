@@ -1,12 +1,12 @@
-// import 'dart:io';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_ssl_pinning/test_page.dart';
 
-// import 'http_overrides.dart';
+import 'http_overrides.dart';
 
 void main() {
-  // HttpOverrides.global = AppHttpOverrides();
+  HttpOverrides.global = AppHttpOverrides();
   runApp(const MyApp());
 }
 
