@@ -1,6 +1,12 @@
+// import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_ssl_pinning/test_page.dart';
+
+// import 'http_overrides.dart';
 
 void main() {
+  // HttpOverrides.global = AppHttpOverrides();
   runApp(const MyApp());
 }
 
@@ -24,7 +30,7 @@ class MyApp extends StatelessWidget {
         // is not restarted.
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const TestPage(),
     );
   }
 }
