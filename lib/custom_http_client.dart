@@ -6,15 +6,22 @@ import 'package:flutter_ssl_pinning/invalid_ssl_certificate_exception.dart';
 typedef ServerCertificateCustomValidationCallback = bool Function(
     List<X509Certificate> chain, String host, int port);
 
+/// Customized HttpClient that implements ServerCertificateCustomValidationCallback
+/// from C#'s HttpClient for certificate pinning usage.
+///
 class CustomHttpClient implements HttpClient {
-  CustomHttpClient(this._httpClient) {
+  CustomHttpClient() {
+    // We need to use an empty SecurityContext so that
+    // badCertificateCallback can be triggered
+    //
+    _httpClient = HttpClient(context: SecurityContext());
     _httpClient.badCertificateCallback = _badCertificateCallback;
   }
 
   ServerCertificateCustomValidationCallback?
       serverCertificateCustomValidationCallback;
 
-  final HttpClient _httpClient;
+  late final HttpClient _httpClient;
   final Map<String, _BadCertificateResult> _badCertificateMap = {};
 
   @override
@@ -73,7 +80,8 @@ class CustomHttpClient implements HttpClient {
               f) =>
       _httpClient.authenticateProxy = f;
 
-  /// This method will do nothing
+  /// This method will do nothing. Use
+  /// [serverCertificateCustomValidationCallback] instead.
   @override
   set badCertificateCallback(
       bool Function(X509Certificate cert, String host, int port)? callback) {
@@ -101,6 +109,7 @@ class CustomHttpClient implements HttpClient {
   @override
   Future<HttpClientRequest> open(
       String method, String host, int port, String path) async {
+    //  Wrap the request with our own request wrapper
     final req = await _httpClient.open(method, host, port, path);
     final creq = CustomHttpClientRequest(this, req);
     return creq;
@@ -108,6 +117,7 @@ class CustomHttpClient implements HttpClient {
 
   @override
   Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    //  Wrap the request with our own request wrapper
     final req = await _httpClient.openUrl(method, url);
     final creq = CustomHttpClientRequest(this, req);
     return creq;
@@ -156,6 +166,12 @@ class CustomHttpClient implements HttpClient {
   Future<HttpClientRequest> putUrl(Uri url) => openUrl("put", url);
 
   bool _badCertificateCallback(X509Certificate cert, String host, int port) {
+    // If there's no callback registered, then return false (default behavior)
+    if (serverCertificateCustomValidationCallback == null) {
+      return false;
+    }
+
+    // Store the certificate, host and port number
     _badCertificateMap['$host:$port'] = _BadCertificateResult(cert, host, port);
     return true;
   }
@@ -205,28 +221,34 @@ class CustomHttpClientRequest extends HttpClientRequest {
   Future<HttpClientResponse> close() async {
     final res = await _req.close();
 
-    final host = uri.host;
-    final port = uri.port;
-    final key = '$host:$port';
-    if (_httpClient.serverCertificateCustomValidationCallback != null) {
-      final chain = <X509Certificate>[];
+    final isSecure = uri.isScheme('https');
 
-      if (res.certificate != null) {
-        chain.add(res.certificate!);
-      }
+    // Certificate pinning only applies to HTTPS traffic
+    if (isSecure) {
+      final host = uri.host;
+      final port = uri.port;
+      final key = '$host:$port';
 
-      if (_httpClient._badCertificateMap.containsKey(key)) {
-        chain.add(_httpClient._badCertificateMap[key]!.cert);
-      }
+      if (_httpClient.serverCertificateCustomValidationCallback != null) {
+        final chain = <X509Certificate>[];
 
-      final isValid = _httpClient.serverCertificateCustomValidationCallback!(
-          chain, host, port);
-      if (!isValid) {
-        throw InvalidSslCertificateException('Failed certificate verification');
-      }
-    } else {
-      if (_httpClient._badCertificateMap.containsKey(key)) {
-        throw InvalidSslCertificateException('Failed certificate verification');
+        // Add the leaf cert
+        if (res.certificate != null) {
+          chain.add(res.certificate!);
+        }
+
+        // Add the intermediate or root cert (we can't control this)
+        if (_httpClient._badCertificateMap.containsKey(key)) {
+          chain.add(_httpClient._badCertificateMap[key]!.cert);
+        }
+
+        // Execute the callback
+        final isValid = _httpClient.serverCertificateCustomValidationCallback!(
+            chain, host, port);
+        if (!isValid) {
+          throw InvalidSslCertificateException(
+              'Failed certificate verification.');
+        }
       }
     }
 
